@@ -13,8 +13,10 @@ import Element.Font as Font
 import Element.Lazy as L
 import Html exposing (Html)
 import Json.Decode as Decode
-import List exposing (filter)
+import List.Extra
 import Random
+import Debug
+import List exposing (isEmpty)
 
 
 type alias Position =
@@ -89,7 +91,7 @@ config =
     , fieldHeight = 3
     , tileSize = 150
     , foodCount = 5
-    , initialBoard = [ { value = 2, position = { x = 1, y = 1 } } ]
+    , initialBoard = [ { value = 2, position = { x = 1, y = 1 } }, { value = 2, position = { x = 2, y = 1 } } ]
     }
 
 
@@ -129,14 +131,12 @@ type alias Model =
 
 type CollisionTestResult
     = NoCollision
-    | AteFood
-    | BitMyself
+    | HitTile (List Tile)
     | HitTheWall
 
 
 type Msg
     = Move Direction
-    | MoveInput Direction
     | RandomPositions (List Position)
     | IgnoreKey
 
@@ -191,9 +191,6 @@ update msg model =
             , Cmd.none
             )
 
-        MoveInput direction ->
-            ( afterMove model direction, Cmd.none )
-
         Move direction ->
             ( afterMove model direction, Cmd.none )
 
@@ -201,44 +198,107 @@ update msg model =
             ( model, Cmd.none )
 
 
+groupByPos board = 
+    List.Extra.groupWhile (\first -> \second -> first.position == second.position) board
+
+
+bestInGroup: (Tile, (List Tile)) -> Tile
+bestInGroup (a, l) = 
+    if isEmpty l then
+        a
+    else
+        List.foldl (\first -> \second -> if first.value > second.value then first else second) a l
+
+withoutDups : Board -> Board
+withoutDups board =
+    groupByPos board |> List.map bestInGroup
+
+
+nullTile : Tile
+nullTile =
+    Tile 0 (Position 0 0)
+
+
+nonEmptyToEmpty : ( a, List a ) -> List a
+nonEmptyToEmpty ( head, list ) =
+    head :: list
+
+
+mergeBoard : Board -> Board
+mergeBoard board =
+    let
+        collisions =
+            List.Extra.groupWhile (\first -> \second -> first.position == second.position) board
+
+        sumGroup =
+            \group -> List.Extra.foldl1 (\first -> \second -> { first | value = first.value + second.value }) group |> Maybe.withDefault nullTile
+    in
+    List.map sumGroup (List.map nonEmptyToEmpty collisions)
+
+
 afterMove : Model -> Direction -> Model
 afterMove model direction =
-    -- Currying!
     let
         movedModel =
-            { model | board = List.map (moveTile model.board direction) model.board }
+            { model | board = List.map (moveTile model.board direction) model.board |> Debug.log "Moved Board" |> mergeBoard |>withoutDups }
     in
     if not <| movedModel == model then
+        -- If we moved we might move again.
         afterMove movedModel direction
-
     else
         movedModel
+
+
+inBounds: Position -> Bool
+inBounds position = 
+    position.x < config.fieldWidth && position.y < config.fieldHeight && position.x >= 0 && position.y >= 0
+
+getCollisions : Board -> Position -> CollisionTestResult
+getCollisions board position =
+    if not <| inBounds position then
+        HitTheWall
+
+    else
+        let
+            collisions =
+                List.filter (\t -> t.position == position) board
+        in
+        if not <| List.isEmpty collisions then
+            HitTile collisions
+
+        else
+            NoCollision
 
 
 moveTile : Board -> Direction -> Tile -> Tile
 moveTile board direction tile =
     let
+        newPos =
+            movePosition tile.position direction
+
         collision =
-            List.head <| filter (\t -> t.position == movePosition tile.position direction) board
+            getCollisions board newPos |> Debug.log "collisions"
+
+        movedTile =
+            { tile | position = newPos }
     in
     case collision of
-        Just collidedTile ->
+        HitTile (collidedTile :: _) ->
             if collidedTile.value == tile.value then
-                { collidedTile | value = collidedTile.value * 2 }
+                movedTile
 
             else
                 tile
 
-        Nothing ->
-            let
-                newPos =
-                    movePosition tile.position direction
-            in
-            if newPos.x < config.fieldWidth && newPos.y < config.fieldHeight && newPos.x >= 0 && newPos.y >= 0 then
-                { tile | position = newPos }
+        HitTheWall ->
+            tile
 
-            else
-                tile
+        NoCollision ->
+            movedTile
+
+        -- Weird quirck of having a list of collisions, equivilant to NoCollision
+        HitTile [] ->
+            movedTile
 
 
 movePosition : Position -> Direction -> Position
@@ -251,28 +311,10 @@ diffList aList bList =
     List.filter (\c -> not <| List.member c bList) aList
 
 
-{-| Certain type of collision results in game status change.
--}
-collisionToGameStatus : CollisionTestResult -> GameStatus
-collisionToGameStatus collisionTestResult =
-    case collisionTestResult of
-        NoCollision ->
-            Playing
-
-        AteFood ->
-            Playing
-
-        BitMyself ->
-            Lost "YOU BIT YOURSELF !"
-
-        HitTheWall ->
-            Lost "YOU HIT THE WALL !"
-
-
 {-| Subscriptions to keyboard events and timer
 -}
 subscriptions : Model -> Sub Msg
-subscriptions model =
+subscriptions _ =
     Sub.batch
         [ Browser.Events.onKeyDown keyDecoder
         ]

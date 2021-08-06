@@ -1,11 +1,12 @@
 module Main exposing (Direction(..), Model, Msg(..), main)
 
+import Array2D
 import Browser
-import Browser.Events exposing (onKeyPress)
+import Browser.Events exposing (onKeyDown, onKeyPress)
 import Html exposing (Html, div, p, table, text, th, tr)
 import Html.Attributes exposing (style)
 import Json.Decode as Decode
-import Browser.Events exposing (onKeyDown)
+import List.Extra
 
 
 main : Program Inputs Model Msg
@@ -20,8 +21,12 @@ main =
 
 type alias Model =
     { score : Int
-    , board : List (List Tile)
+    , board : Board
     }
+
+
+type alias Board =
+    Array2D.Array2D Tile
 
 
 subscriptions : Model -> Sub Msg
@@ -37,11 +42,11 @@ keyDecoder =
 toDirection : String -> Msg
 toDirection string =
     case string of
-        -- "ArrowLeft" ->
-        --     KeyPress Left
+        "ArrowLeft" ->
+            KeyPress Left
 
-        -- "ArrowRight" ->
-        --     KeyPress Right
+        "ArrowRight" ->
+            KeyPress Right
 
         _ ->
             KeyPress Other
@@ -59,7 +64,7 @@ type alias Inputs =
 init : Inputs -> ( Model, Cmd Msg )
 init _ =
     ( { score = 0
-      , board = [ [ Value 2, Empty, Empty ], [ Empty, Empty, Empty ], [ Empty, Empty, Empty ] ]
+      , board = Array2D.fromList [ [ Value 2, Empty, Empty ], [ Empty, Empty, Empty ], [ Empty, Empty, Empty ] ]
       }
     , Cmd.none
     )
@@ -69,8 +74,10 @@ view : Model -> Html Msg
 view model =
     div []
         [ p [] [ text (String.fromInt model.score) ]
-        , table [] (List.map renderRow model.board)
+        , table [] (Array2D.map renderRow model.board)
         ]
+
+getArrays = 
 
 
 renderRow : List Tile -> Html Msg
@@ -104,4 +111,41 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         KeyPress _ ->
-            ( { model | score = model.score + 1 }, Cmd.none )
+            ( { model | score = model.score + 1, board = updateBoard model.board (Move { x = 0, y = 0 } { x = 3, y = 3 }) }, Cmd.none )
+
+
+
+-- Game
+
+
+type alias Position =
+    { x : Int, y : Int }
+
+
+type BoardUpdate
+    = Move Position Position
+    | Merge Position Position
+
+
+
+-- Helper function to unwrap a value you're sure is just ;)
+
+
+sure : Maybe Tile -> Tile
+sure maybe =
+    case maybe of
+        Just a ->
+            a
+
+        Nothing ->
+            Value -1
+
+
+updateBoard : Board -> BoardUpdate -> Board
+updateBoard board board_update =
+    case board_update of
+        Move from to ->
+            Array2D.set to.x to.y (sure (Array2D.get from.x from.y board)) board
+
+        Merge from to ->
+            Array2D.set to.x to.y (Value -6) board

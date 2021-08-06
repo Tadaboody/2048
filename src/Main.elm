@@ -12,10 +12,9 @@ import Element.Border as Border
 import Element.Font as Font
 import Element.Lazy as L
 import Html exposing (Html)
-import Html.Attributes exposing (href, rel, style)
 import Json.Decode as Decode
+import List exposing (filter)
 import Random
-import Time
 
 
 type alias Position =
@@ -137,13 +136,9 @@ type CollisionTestResult
 
 type Msg
     = Move Direction
+    | MoveInput Direction
     | RandomPositions (List Position)
     | IgnoreKey
-
-
-
--- | TogglePause
--- | Start
 
 
 newPlayField : Int -> Int -> PlayField
@@ -196,21 +191,64 @@ update msg model =
             , Cmd.none
             )
 
-        Move direction ->
-            if model.gameStatus == Playing then
-                ( { model | direction = direction }, Cmd.none )
+        MoveInput direction ->
+            ( afterMove model direction, Cmd.none )
 
-            else
-                ( model, Cmd.none )
+        Move direction ->
+            ( afterMove model direction, Cmd.none )
 
         IgnoreKey ->
             ( model, Cmd.none )
 
 
+afterMove : Model -> Direction -> Model
+afterMove model direction =
+    -- Currying!
+    let
+        movedModel =
+            { model | board = List.map (moveTile model.board direction) model.board }
+    in
+    if not <| movedModel == model then
+        afterMove movedModel direction
+
+    else
+        movedModel
+
+
+moveTile : Board -> Direction -> Tile -> Tile
+moveTile board direction tile =
+    let
+        collision =
+            List.head <| filter (\t -> t.position == movePosition tile.position direction) board
+    in
+    case collision of
+        Just collidedTile ->
+            if collidedTile.value == tile.value then
+                { collidedTile | value = collidedTile.value * 2 }
+
+            else
+                tile
+
+        Nothing ->
+            let
+                newPos =
+                    movePosition tile.position direction
+            in
+            if newPos.x < config.fieldWidth && newPos.y < config.fieldHeight && newPos.x >= 0 && newPos.y >= 0 then
+                { tile | position = newPos }
+
+            else
+                tile
+
+
+movePosition : Position -> Direction -> Position
+movePosition position ( x, y ) =
+    { x = position.x + x, y = position.y + y }
+
+
 diffList : List a -> List a -> List a
 diffList aList bList =
     List.filter (\c -> not <| List.member c bList) aList
-
 
 
 {-| Certain type of collision results in game status change.
@@ -405,7 +443,7 @@ viewTile tileType tile =
             ++ (case tile of
                     Just t ->
                         [ moveRight <| toFloat (t.position.x * config.tileSize)
-                        , moveDown <| toFloat (t.position.x * config.tileSize)
+                        , moveDown <| toFloat (t.position.y * config.tileSize)
                         ]
 
                     Nothing ->
@@ -431,7 +469,7 @@ viewTitle =
         , Font.bold
         , centerX
         ]
-        (text "SNAKE !")
+        (text "2048")
 
 
 viewScore : Int -> Element Msg

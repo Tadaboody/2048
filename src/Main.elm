@@ -1,9 +1,5 @@
 module Main exposing (..)
 
-{-| Classic Snake game implemented in Elm, using elm-ui to display
-its simple graphics.
--}
-
 import Browser
 import Browser.Events
 import Element exposing (..)
@@ -38,13 +34,6 @@ type TileType
     | TileFull
 
 
-{-| All possible statuses of the game.
--}
-type GameStatus
-    = Playing
-    | Lost String
-
-
 {-| Simple tuple that indicates horizontal and vertical direction
 as one of -1, 0, 1
 -}
@@ -52,11 +41,6 @@ type alias Direction =
     ( Int, Int )
 
 
-{-| Directions for the snake. Since we are dealing with a grid
-and not pixel coordinates, it is easier to express the directions
-as tuple for horizontal and vertical direction. Then we can apply
-this to the snake update logic.
--}
 type alias Directions =
     { right : Direction
     , left : Direction
@@ -107,7 +91,6 @@ main =
 
 type alias Model =
     { board : Board
-    , gameStatus : GameStatus
     }
 
 
@@ -123,10 +106,9 @@ type Msg
     | IgnoreKey
 
 
-newModel : GameStatus -> Model
-newModel gameStatus =
+newModel : Model
+newModel =
     { board = config.initialBoard
-    , gameStatus = gameStatus
     }
 
 
@@ -150,7 +132,7 @@ positionGenerator =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( newModel Playing
+    ( newModel
     , randomPositions 1
     )
 
@@ -176,9 +158,6 @@ update msg model =
                   }
                 , Cmd.none
                 )
-
-            else if isLost model.board then
-                ( { model | gameStatus = Lost "" }, Cmd.none )
 
             else if boardFull model then
                 ( model, Cmd.none )
@@ -454,12 +433,12 @@ view model =
 
 {-| Game colors. Lets put some meaning behind numbers.
 -}
-gameColors : { black : Color, yellow : Color, body : Color, snake : Color, tile : Color, food : Color, wall : Color, frame1 : Color, frame2 : Color, title : Color }
+gameColors : { black : Color, yellow : Color, body : Color, full : Color, tile : Color, food : Color, wall : Color, frame1 : Color, frame2 : Color, title : Color }
 gameColors =
     { black = rgb255 0 0 0
     , yellow = rgb255 255 255 0
     , body = rgb255 255 255 255
-    , snake = rgb255 0 220 0
+    , full = rgb255 0 220 0
     , tile = rgb255 50 20 20
     , food = rgb255 180 0 0
     , wall = rgb255 80 50 50
@@ -616,7 +595,7 @@ styleTile tileContent =
                     gameColors.tile
 
                 TileFull ->
-                    gameColors.snake
+                    gameColors.full
     in
     [ width <| px config.tileSize
     , height <| px config.tileSize

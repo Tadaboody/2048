@@ -6,7 +6,6 @@ its simple graphics.
 
 import Browser
 import Browser.Events
-import Debug
 import Element exposing (..)
 import Element.Background as Background
 import Element.Border as Border
@@ -46,11 +45,6 @@ type GameStatus
     | Lost String
 
 
-
--- | NotStarted
--- | Paused
-
-
 {-| Simple tuple that indicates horizontal and vertical direction
 as one of -1, 0, 1
 -}
@@ -85,10 +79,10 @@ type alias Config =
 -}
 config : Config
 config =
-    { fieldWidth = 4
-    , fieldHeight = 4
+    { fieldWidth = 3
+    , fieldHeight = 3
     , tileSize = 150
-    , initialBoard = [ { value = 2, position = { x = 1, y = 1 } }, { value = 2, position = { x = 3, y = 3 } } ]
+    , initialBoard = [ { value = 2, position = { x = 1, y = 1 } } ]
     }
 
 
@@ -111,17 +105,8 @@ main =
         }
 
 
-type alias PlayField =
-    { width : Int
-    , height : Int
-    , data : List TileType
-    }
-
-
 type alias Model =
     { board : Board
-    , field : PlayField
-    , direction : Direction
     , gameStatus : GameStatus
     , score : Int
     }
@@ -139,16 +124,9 @@ type Msg
     | IgnoreKey
 
 
-newPlayField : Int -> Int -> PlayField
-newPlayField w h =
-    PlayField w h (List.repeat (w * h) TileEmpty)
-
-
 newModel : GameStatus -> Model
 newModel gameStatus =
     { board = config.initialBoard
-    , field = newPlayField config.fieldWidth config.fieldHeight
-    , direction = directions.right
     , gameStatus = gameStatus
     , score = 0
     }
@@ -187,18 +165,64 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         RandomPositions positions ->
-            ( { model
-                | board = model.board ++ List.map (\pos -> { value = 2, position = pos }) (diffList positions (List.map .position model.board))
-              }
-            , Cmd.none
-            )
+            let
+                newTile =
+                    \pos -> { value = 2, position = pos }
+
+                newPositions =
+                    diffList positions (List.map .position model.board)
+            in
+            if not <| List.isEmpty newPositions then
+                ( { model
+                    | board = model.board ++ List.map newTile newPositions
+                  }
+                , Cmd.none
+                )
+
+            else
+                if isLost model then
+                    ( { model | gameStatus = Lost "" }, Cmd.none )
+
+                else if boardFull model then
+                    ( model, Cmd.none )
+
+                else
+                    ( model, randomPositions 1 )
 
         Move direction ->
-            ( afterMove model direction, Cmd.none )
+            let
+                movedModel =
+                    afterMove model direction
+            in
+            if movedModel /= model then
+                ( movedModel, randomPositions 1 )
+
+            else
+                ( model, Cmd.none )
 
         IgnoreKey ->
             ( model, Cmd.none )
 
+
+boardFull : Model -> Bool
+boardFull model =
+    List.length model.board == config.fieldHeight * config.fieldHeight
+
+isLost : Model -> Bool
+isLost model = 
+    let 
+        sortBoard =
+            List.sortWith cmpTile
+
+        sortedEq =
+            \first second -> sortBoard first == sortBoard second
+
+
+        allDirections =
+            [ directions.down, directions.up, directions.left, directions.right ]
+
+    in
+        List.all (sortedEq model.board) <| List.map .board <| List.map (afterMove model) allDirections
 
 cmpTile : Tile -> Tile -> Order
 cmpTile first second =
@@ -262,7 +286,7 @@ afterMove : Model -> Direction -> Model
 afterMove model direction =
     let
         movedModel =
-            { model | board = List.map (moveTile model.board direction) model.board |> Debug.log "Moved Board" |> mergeBoard |> withoutDups }
+            { model | board = List.map (moveTile model.board direction) model.board |> mergeBoard |> withoutDups }
     in
     if not <| movedModel == model then
         -- If we moved we might move again.
@@ -301,7 +325,7 @@ moveTile board direction tile =
             movePosition tile.position direction
 
         collision =
-            getCollisions board newPos |> Debug.log "collisions"
+            getCollisions board newPos
 
         movedTile =
             { tile | position = newPos }
@@ -455,10 +479,10 @@ viewField : Model -> Element Msg
 viewField model =
     let
         width_ =
-            model.field.width * config.tileSize
+            config.fieldHeight * config.tileSize
 
         tileCount =
-            List.length model.field.data
+            config.fieldHeight * config.fieldWidth
     in
     el
         [ Border.color gameColors.wall

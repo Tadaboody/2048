@@ -79,8 +79,8 @@ type alias Config =
 -}
 config : Config
 config =
-    { fieldWidth = 3
-    , fieldHeight = 3
+    { fieldWidth = 4
+    , fieldHeight = 4
     , tileSize = 150
     , initialBoard = [ { value = 2, position = { x = 1, y = 1 } } ]
     }
@@ -108,7 +108,6 @@ main =
 type alias Model =
     { board : Board
     , gameStatus : GameStatus
-    , score : Int
     }
 
 
@@ -128,7 +127,6 @@ newModel : GameStatus -> Model
 newModel gameStatus =
     { board = config.initialBoard
     , gameStatus = gameStatus
-    , score = 0
     }
 
 
@@ -193,7 +191,7 @@ update msg model =
                 movedModel =
                     { model | board = afterMove model.board direction }
             in
-            if movedModel /= model then
+            if not <| boardEq model.board movedModel.board then
                 ( movedModel, randomPositions 1 )
 
             else
@@ -208,19 +206,34 @@ boardFull model =
     List.length model.board == config.fieldHeight * config.fieldHeight
 
 
+sumBy : (a -> number) -> List a -> number
+sumBy fun =
+    List.map fun >> List.sum
+
+
+getScore : Board -> Int
+getScore =
+    sumBy .value
+
+
+boardEq first second =
+    let
+        sortBoard =
+            List.sortWith cmpTile
+    in
+    sortBoard first == sortBoard second
+
+
 isLost : Board -> Bool
 isLost board =
     let
         sortBoard =
             List.sortWith cmpTile
 
-        sortedEq =
-            \first second -> sortBoard first == sortBoard second
-
         allDirections =
             [ directions.down, directions.up, directions.left, directions.right ]
     in
-    List.all (sortedEq board) <| List.map (afterMove board) allDirections
+    List.all ((==) (sortBoard board)) <| List.map sortBoard <| List.map (afterMove board) allDirections
 
 
 cmpTile : Tile -> Tile -> Order
@@ -463,12 +476,12 @@ viewGame model =
     el (styleGameFrame gameColors.frame2 gameColors.black True) <|
         column
             ([ centerX, centerY, spacing 30 ]
-                ++ viewMessage model.gameStatus
+                ++ viewMessage model
             )
         <|
             [ viewTitle
             , el [] <| viewField model
-            , viewScore model.score
+            , viewScore <| getScore model.board
             ]
 
 
@@ -566,32 +579,30 @@ viewScore score =
         ]
 
 
-viewMessage : GameStatus -> List (Element.Attribute Msg)
+viewMessage : Model -> List (Element.Attribute Msg)
 viewMessage status =
-    case status of
-        Lost string ->
-            [ Element.inFront
-                (el
-                    [ centerX
-                    , centerY
-                    , padding 20
-                    , Border.solid
-                    , Border.color gameColors.body
-                    , Border.width 1
-                    , Border.rounded 5
-                    , Background.color gameColors.black
+    if isLost status.board then
+        [ Element.inFront
+            (el
+                [ centerX
+                , centerY
+                , padding 20
+                , Border.solid
+                , Border.color gameColors.body
+                , Border.width 1
+                , Border.rounded 5
+                , Background.color gameColors.black
+                ]
+             <|
+                column
+                    [ spacing 10 ]
+                    [ paragraph [ Font.center ] [ text "Lost" ]
                     ]
-                 <|
-                    column
-                        [ spacing 10 ]
-                        [ paragraph [ Font.center ] [ text string ]
-                        , paragraph [ Font.center ] [ text "Lost" ]
-                        ]
-                )
-            ]
+            )
+        ]
 
-        _ ->
-            []
+    else
+        []
 
 
 {-| Style of the tile, based on tile type

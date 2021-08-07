@@ -167,7 +167,7 @@ update msg model =
         RandomPositions positions ->
             let
                 newTile =
-                    \pos -> { value = 2, position = pos }
+                    Tile 2
 
                 newPositions =
                     diffList positions (List.map .position model.board)
@@ -179,20 +179,19 @@ update msg model =
                 , Cmd.none
                 )
 
+            else if isLost model.board then
+                ( { model | gameStatus = Lost "" }, Cmd.none )
+
+            else if boardFull model then
+                ( model, Cmd.none )
+
             else
-                if isLost model then
-                    ( { model | gameStatus = Lost "" }, Cmd.none )
-
-                else if boardFull model then
-                    ( model, Cmd.none )
-
-                else
-                    ( model, randomPositions 1 )
+                ( model, randomPositions 1 )
 
         Move direction ->
             let
                 movedModel =
-                    afterMove model direction
+                    { model | board = afterMove model.board direction }
             in
             if movedModel /= model then
                 ( movedModel, randomPositions 1 )
@@ -208,21 +207,21 @@ boardFull : Model -> Bool
 boardFull model =
     List.length model.board == config.fieldHeight * config.fieldHeight
 
-isLost : Model -> Bool
-isLost model = 
-    let 
+
+isLost : Board -> Bool
+isLost board =
+    let
         sortBoard =
             List.sortWith cmpTile
 
         sortedEq =
             \first second -> sortBoard first == sortBoard second
 
-
         allDirections =
             [ directions.down, directions.up, directions.left, directions.right ]
-
     in
-        List.all (sortedEq model.board) <| List.map .board <| List.map (afterMove model) allDirections
+    List.all (sortedEq board) <| List.map (afterMove board) allDirections
+
 
 cmpTile : Tile -> Tile -> Order
 cmpTile first second =
@@ -282,18 +281,18 @@ mergeBoard board =
     List.map sumGroup (List.map nonEmptyToEmpty collisions)
 
 
-afterMove : Model -> Direction -> Model
-afterMove model direction =
+afterMove : Board -> Direction -> Board
+afterMove board direction =
     let
-        movedModel =
-            { model | board = List.map (moveTile model.board direction) model.board |> mergeBoard |> withoutDups }
+        movedBoard =
+            List.map (moveTile board direction) board |> mergeBoard |> withoutDups
     in
-    if not <| movedModel == model then
+    if not <| movedBoard == board then
         -- If we moved we might move again.
-        afterMove movedModel direction
+        afterMove movedBoard direction
 
     else
-        movedModel
+        movedBoard
 
 
 inBounds : Position -> Bool

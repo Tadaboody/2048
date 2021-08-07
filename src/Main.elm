@@ -6,6 +6,7 @@ its simple graphics.
 
 import Browser
 import Browser.Events
+import Debug
 import Element exposing (..)
 import Element.Background as Background
 import Element.Border as Border
@@ -15,8 +16,6 @@ import Html exposing (Html)
 import Json.Decode as Decode
 import List.Extra
 import Random
-import Debug
-import List exposing (isEmpty)
 
 
 type alias Position =
@@ -78,7 +77,6 @@ type alias Config =
     { fieldWidth : Int
     , fieldHeight : Int
     , tileSize : Int
-    , foodCount : Int
     , initialBoard : Board
     }
 
@@ -87,11 +85,10 @@ type alias Config =
 -}
 config : Config
 config =
-    { fieldWidth = 3
-    , fieldHeight = 3
+    { fieldWidth = 4
+    , fieldHeight = 4
     , tileSize = 150
-    , foodCount = 5
-    , initialBoard = [ { value = 2, position = { x = 1, y = 1 } }, { value = 2, position = { x = 2, y = 1 } } ]
+    , initialBoard = [ { value = 2, position = { x = 1, y = 1 } }, { value = 2, position = { x = 3, y = 3 } } ]
     }
 
 
@@ -104,6 +101,7 @@ directions =
     }
 
 
+main : Program () Model Msg
 main =
     Browser.document
         { init = init
@@ -169,7 +167,7 @@ randomPositions count =
 positionGenerator : Random.Generator Position
 positionGenerator =
     Random.map2
-        (\x y -> Position x y)
+        Position
         (Random.int 0 <| config.fieldWidth - 1)
         (Random.int 0 <| config.fieldHeight - 1)
 
@@ -177,8 +175,12 @@ positionGenerator =
 init : () -> ( Model, Cmd Msg )
 init _ =
     ( newModel Playing
-    , Cmd.none
+    , randomPositions 1
     )
+
+
+
+-- UPDATE
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -198,16 +200,33 @@ update msg model =
             ( model, Cmd.none )
 
 
-groupByPos board = 
-    List.Extra.groupWhile (\first -> \second -> first.position == second.position) board
+cmpTile : Tile -> Tile -> Order
+cmpTile first second =
+    if first.position.x == second.position.x then
+        compare first.position.y second.position.y
 
-
-bestInGroup: (Tile, (List Tile)) -> Tile
-bestInGroup (a, l) = 
-    if isEmpty l then
-        a
     else
-        List.foldl (\first -> \second -> if first.value > second.value then first else second) a l
+        compare first.position.x second.position.x
+
+
+groupByPos : Board -> List ( Tile, List Tile )
+groupByPos board =
+    List.sortWith cmpTile board |> List.Extra.groupWhile (\first second -> first.position == second.position)
+
+
+bestValue : Tile -> Tile -> Tile
+bestValue first second =
+    if first.value > second.value then
+        first
+
+    else
+        second
+
+
+bestInGroup : ( Tile, List Tile ) -> Tile
+bestInGroup ( a, l ) =
+    List.foldl bestValue a l
+
 
 withoutDups : Board -> Board
 withoutDups board =
@@ -228,10 +247,13 @@ mergeBoard : Board -> Board
 mergeBoard board =
     let
         collisions =
-            List.Extra.groupWhile (\first -> \second -> first.position == second.position) board
+            groupByPos board
+
+        sumTiles =
+            \first -> \second -> { first | value = first.value + second.value }
 
         sumGroup =
-            \group -> List.Extra.foldl1 (\first -> \second -> { first | value = first.value + second.value }) group |> Maybe.withDefault nullTile
+            \group -> List.Extra.foldl1 sumTiles group |> Maybe.withDefault nullTile
     in
     List.map sumGroup (List.map nonEmptyToEmpty collisions)
 
@@ -240,18 +262,20 @@ afterMove : Model -> Direction -> Model
 afterMove model direction =
     let
         movedModel =
-            { model | board = List.map (moveTile model.board direction) model.board |> Debug.log "Moved Board" |> mergeBoard |>withoutDups }
+            { model | board = List.map (moveTile model.board direction) model.board |> Debug.log "Moved Board" |> mergeBoard |> withoutDups }
     in
     if not <| movedModel == model then
         -- If we moved we might move again.
         afterMove movedModel direction
+
     else
         movedModel
 
 
-inBounds: Position -> Bool
-inBounds position = 
+inBounds : Position -> Bool
+inBounds position =
     position.x < config.fieldWidth && position.y < config.fieldHeight && position.x >= 0 && position.y >= 0
+
 
 getCollisions : Board -> Position -> CollisionTestResult
 getCollisions board position =
@@ -311,6 +335,10 @@ diffList aList bList =
     List.filter (\c -> not <| List.member c bList) aList
 
 
+
+-- INPUTS
+
+
 {-| Subscriptions to keyboard events and timer
 -}
 subscriptions : Model -> Sub Msg
@@ -318,16 +346,6 @@ subscriptions _ =
     Sub.batch
         [ Browser.Events.onKeyDown keyDecoder
         ]
-
-
-isLost : GameStatus -> Bool
-isLost gameStatus =
-    case gameStatus of
-        Lost _ ->
-            True
-
-        _ ->
-            False
 
 
 {-| Decoder for the pressed key
@@ -358,6 +376,10 @@ keyToMessage string =
             IgnoreKey
 
 
+
+-- VIEW
+
+
 {-| Browser.document requires the view to return Document type. So we
 define the type alias for Document here and use it as a return type from
 the view function.
@@ -373,7 +395,7 @@ page like the frame filling the entire page, background color and fancy font.
 -}
 view : Model -> Document Msg
 view model =
-    { title = "Snake game with elm-ui"
+    { title = "2048"
     , body =
         [ Element.layout
             [ Font.family
@@ -388,9 +410,7 @@ view model =
             ]
           <|
             el
-                ([ centerX ]
-                    ++ styleGameFrame gameColors.frame1 gameColors.frame1 False
-                )
+                (centerX :: styleGameFrame gameColors.frame1 gameColors.frame1 False)
                 (L.lazy viewGame model)
         ]
     }
@@ -398,6 +418,7 @@ view model =
 
 {-| Game colors. Lets put some meaning behind numbers.
 -}
+gameColors : { black : Color, yellow : Color, body : Color, snake : Color, tile : Color, food : Color, wall : Color, frame1 : Color, frame2 : Color, title : Color }
 gameColors =
     { black = rgb255 0 0 0
     , yellow = rgb255 255 255 0

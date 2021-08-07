@@ -1,0 +1,27 @@
+name: Publish elm to pages
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: jorelali/setup-elm@v3
+      with:
+        elm-version: 0.19.1
+    - run: elm make src/Main.elm --output=pages/index.html
+    - name: Deploy
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./pages
+    
+      
+
